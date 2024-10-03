@@ -1,67 +1,72 @@
 with avg_score as
-         (SELECT ts.trail_id, AVG(ts.score) as score
-          FROM trails_scores ts
-                   JOIN users u ON u.user_id = ts.user_id
-          WHERE u.level = 'intermediate'
-          GROUP BY ts.trail_id),
-wild_animals_amount AS
- (SELECT w.trail_id, COUNT(w.animal) AS animal_events
-  FROM  wild_animals w
-  GROUP BY w.trail_id
- ),
+(
+    select ts.trail_id, avg(ts.score) as score
+    from trails_scores ts
+    join users u on u.user_id = ts.user_id
+    where u.level = 'intermediate'
+    group by ts.trail_id),
+    
+wild_animals_amount as(
+    select w.trail_id, count(w.animal) as animal_events
+    from  wild_animals w
+    group by w.trail_id
+),
 with_train_station as(
-    SELECT tow.name AS town_name, t.trail_id, IFNULL(wa.animal_events, 'NO INFORMATION') as animal_events, IFNULL(a.score, 0)as avg_score
-    FROM trails t
-          LEFT JOIN towns tow ON t.start_point = tow.town_id
-          LEFT JOIN avg_score a ON a.trail_id = t.trail_id
-          LEFT JOIN wild_animals_amount wa ON wa.trail_id = t.trail_id
-    WHERE tow.train_station = True)
+    select tow.name as town_name, t.trail_id, ifnull(wa.animal_events, 'no information') as animal_events, ifnull(a.score, 0) as avg_score
+    from trails t
+    left join towns tow on t.start_point = tow.town_id
+    left join avg_score a on a.trail_id = t.trail_id
+    left join wild_animals_amount wa on wa.trail_id = t.trail_id
+    where tow.train_station = true)
 
-(SELECT * FROM  with_train_station
-ORDER BY animal_events ASC
-LIMIT 5)
-    UNION
-(SELECT * FROM with_train_station
-ORDER BY avg_score DESC
-LIMIT 5);
+(select * from  with_train_station
+order by animal_events asc
+limit 5)
 
+union
 
-# with normalization
+(select * from with_train_station
+order by avg_score desc
+limit 5);
+
+-- with normalization
 with avg_score as
-      (SELECT ts.trail_id, AVG(ts.score)/10 as score
-       FROM trails_scores ts
-                JOIN users u ON u.user_id = ts.user_id
-       WHERE u.level = 'intermediate'
-       GROUP BY ts.trail_id),
-wild_animals_amount AS
-  (SELECT w.trail_id, COUNT(w.animal) AS animal_events
-   FROM  wild_animals w
-   GROUP BY w.trail_id
-  ),
-normalized_animal_events AS (
-  SELECT
-      trail_id,
-      wa.animal_events,
-      MIN(wa.animal_events) OVER () AS min_animal_events,
-          MAX(wa.animal_events) OVER () AS max_animal_events
-  FROM wild_animals_amount wa
-),
-normalized_score_animal AS (
-  SELECT
-      trail_id,
-      (animal_events - min_animal_events) / NULLIF((max_animal_events - min_animal_events), 0) AS normalized_animal_events
-  FROM normalized_animal_events
-),
-with_train_station AS (
-  SELECT
-      tow.name AS town_name,
-      t.trail_id,
-      (a.score - n.normalized_animal_events) as score
-  FROM trails t
-           JOIN towns tow ON t.start_point = tow.town_id
-           JOIN avg_score a ON a.trail_id = t.trail_id
-           JOIN normalized_score_animal n ON n.trail_id = t.trail_id
-  WHERE tow.train_station = True)
+(select ts.trail_id, avg(ts.score)/10 as score
+from trails_scores ts
+join users u on u.user_id = ts.user_id
+where u.level = 'intermediate'
+group by ts.trail_id),
 
-SELECT * FROM with_train_station
-ORDER BY score DESC;
+wild_animals_amount as(
+    select w.trail_id, count(w.animal) as animal_events
+    from  wild_animals w
+    group by w.trail_id
+),
+    
+normalized_animal_events as (
+    select trail_id,
+    wa.animal_events,
+    min(wa.animal_events) over () as min_animal_events,
+    max(wa.animal_events) over () as max_animal_events
+    from wild_animals_amount wa
+     ),
+    
+normalized_score_animal as (
+    select trail_id,
+    (animal_events - min_animal_events) / nullif((max_animal_events - min_animal_events), 0) as normalized_animal_events
+    from normalized_animal_events
+),
+    
+with_train_station as (
+    select tow.name as town_name,
+    t.trail_id,
+    (a.score - n.normalized_animal_events) as score
+    from trails t
+    join towns tow on t.start_point = tow.town_id
+    join avg_score a on a.trail_id = t.trail_id
+    join normalized_score_animal n on n.trail_id = t.trail_id
+     where tow.train_station = true
+ )
+
+select * from with_train_station
+order by score desc;
